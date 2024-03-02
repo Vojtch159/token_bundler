@@ -7,6 +7,11 @@ version = "0.3.0"
 source = "git+https://github.com/keep-starknet-strange/alexandria.git#417c5a80ed2fef05ce159d643f3e34a5386ee06c"
 
 [[package]]
+name = "openzeppelin"
+version = "0.9.0"
+source = "git+https://github.com/OpenZeppelin/cairo-contracts.git?tag=v0.9.0#861fc416f87addbe23a3b47f9d19ab27c10d5dc8"
+
+[[package]]
 name = "snforge_std"
 version = "0.16.0"
 source = "git+https://github.com/foundry-rs/starknet-foundry?tag=v0.16.0#f58e0ab42b6095b7d0cb841ede595aecbc9cb45d"
@@ -16,5 +21,6 @@ name = "token_bundler"
 version = "0.1.0"
 dependencies = [
  "alexandria_storage",
+ "openzeppelin",
  "snforge_std",
 ]
