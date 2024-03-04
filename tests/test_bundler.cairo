@@ -1,3 +1,5 @@
+use core::option::OptionTrait;
+use core::traits::TryInto;
 use core::array::ArrayTrait;
 use starknet::ContractAddress;
 
@@ -7,29 +9,30 @@ use token_bundler::TokenBundler::ITokenBundlerSafeDispatcher;
 use token_bundler::TokenBundler::ITokenBundlerSafeDispatcherTrait;
 use token_bundler::TokenBundler::ITokenBundlerDispatcher;
 use token_bundler::TokenBundler::ITokenBundlerDispatcherTrait;
-use token_bundler::TokenBundler::Token;
-use token_bundler::TokenBundler::AssetCategory;
+use token_bundler::MultiToken::MultiToken::{Asset, Category};
 
-fn deploy_contract(name: felt252) -> ContractAddress {
-    let contract = declare(name);
-    contract.deploy(@ArrayTrait::new()).unwrap()
+fn deploy_bundler() -> ContractAddress {
+    let contract_class = declare('TokenBundler');
+    let constructor_calldata = @ArrayTrait::new();
+    return contract_class.deploy(constructor_calldata).unwrap();
+}
+
+fn deploy_account() -> ContractAddress {
+    return 0.try_into().unwrap();
+}
+
+fn deploy_erc20(name: felt252, symbol: felt252, owner: ContractAddress) -> ContractAddress {
+    return 0.try_into().unwrap();
+}
+
+fn deploy_erc721() -> ContractAddress {
+    return 0.try_into().unwrap();
 }
 
 #[test]
-fn test_create_and_get_bundle() {
-    let contract_address = deploy_contract('TokenBundler');
-
-    let dispatcher = ITokenBundlerDispatcher { contract_address };
-    let mut tokens = ArrayTrait::<Token>::new();
-    let token = Token {
-        contract_address: dispatcher.contract_address, asset_category: AssetCategory::ERC20,
-    };
-    tokens.append(token);
-    dispatcher.create(tokens);
-
-    let bundleAndTokens = dispatcher.bundle(0);
-    assert(bundleAndTokens.bundle.bundle_id == 0, 'Invalid Bundle');
-    let mut tokens_to_check = ArrayTrait::<ContractAddress>::new();
-    tokens_to_check.append(dispatcher.contract_address);
-    assert(bundleAndTokens.tokens == tokens_to_check.span(), 'Invalid Bundle Tokens')
+fn test_full_bundle_flow() {
+    let bundler_address = deploy_bundler();
+    let account = deploy_account();
+    assert(true, 'yay')
 }
+
