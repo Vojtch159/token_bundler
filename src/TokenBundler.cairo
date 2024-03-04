@@ -1,21 +1,9 @@
 use starknet::ContractAddress;
-
-#[derive(Drop, Serde, starknet::Store)]
-pub enum AssetCategory {
-    ERC20,
-    ERC721,
-    ERC1155,
-}
-
-#[derive(Drop, Serde, starknet::Store)]
-pub struct Token {
-    contract_address: ContractAddress,
-    asset_category: AssetCategory,
-}
+use token_bundler::MultiToken::MultiToken;
 
 #[starknet::interface]
 trait ITokenBundler<TContractState> {
-    fn create(ref self: TContractState, tokens: Array<Token>);
+    fn create(ref self: TContractState, tokens: Array<MultiToken::Asset>);
     fn burn(ref self: TContractState, bundle_id: felt252);
     fn bundle(self: @TContractState, bundle_id: felt252) -> TokenBundler::Bundle;
     fn tokensInBundle(self: @TContractState, bundle_id: felt252) -> Span<ContractAddress>;
@@ -23,6 +11,8 @@ trait ITokenBundler<TContractState> {
 
 #[starknet::contract]
 mod TokenBundler {
+    use core::option::OptionTrait;
+    use openzeppelin::token::erc721::interface::IERC721CamelOnly;
     use openzeppelin::token::erc721::erc721_receiver::ERC721ReceiverComponent::InternalTrait;
     use core::traits::Into;
     use core::starknet::event::EventEmitter;
@@ -30,18 +20,20 @@ mod TokenBundler {
     use token_bundler::TokenBundler::ITokenBundler;
     use core::array::SpanTrait;
     use core::array::ArrayTrait;
-    use starknet::{ContractAddress, get_caller_address};
+    use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use alexandria_storage::list::{ListTrait, List};
-    use super::Token;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc721::ERC721Component;
     use openzeppelin::token::erc721::ERC721ReceiverComponent;
     use openzeppelin::access::ownable::OwnableComponent;
+    use token_bundler::MultiToken::IMultiToken;
+    use token_bundler::MultiToken::MultiToken;
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: ERC721ReceiverComponent, storage: erc721_receiver, event: ERC721ReceiverEvent);
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+    component!(path: MultiToken, storage: multi_token, event: MultiTokenEvent);
 
     #[abi(embed_v0)]
     impl ERC721Impl = ERC721Component::ERC721Impl<ContractState>;
@@ -72,11 +64,16 @@ mod TokenBundler {
         OwnableComponent::OwnableCamelOnlyImpl<ContractState>;
     impl InternalImpl = OwnableComponent::InternalImpl<ContractState>;
 
+    #[abi(embed_v0)]
+    impl MultiTokenImpl = MultiToken::MultiToken<ContractState>;
+    impl MultiTokenInternalImpl = MultiToken::InternalImpl<ContractState>;
+
     #[storage]
     struct Storage {
         last_bundle_id: felt252,
         bundle_id_to_owner_mapping: LegacyMap::<felt252, ContractAddress>,
         bundle_id_to_bundle_tokens_mapping: LegacyMap::<felt252, List<ContractAddress>>,
+        token_contract_to_asset_struct_mapping: LegacyMap::<ContractAddress, MultiToken::Asset>,
         #[substorage(v0)]
         erc721: ERC721Component::Storage,
         #[substorage(v0)]
@@ -84,7 +81,9 @@ mod TokenBundler {
         #[substorage(v0)]
         erc721_receiver: ERC721ReceiverComponent::Storage,
         #[substorage(v0)]
-        ownable: OwnableComponent::Storage
+        ownable: OwnableComponent::Storage,
+        #[substorage(v0)]
+        multi_token: MultiToken::Storage
     }
 
     #[derive(Drop, starknet::Event)]
@@ -110,7 +109,9 @@ mod TokenBundler {
         #[flat]
         ERC721ReceiverEvent: ERC721ReceiverComponent::Event,
         #[flat]
-        OwnableEvent: OwnableComponent::Event
+        OwnableEvent: OwnableComponent::Event,
+        #[flat]
+        MultiTokenEvent: MultiToken::Event,
     }
 
     #[derive(Drop, Serde)]
@@ -131,7 +132,7 @@ mod TokenBundler {
 
     #[abi(embed_v0)]
     impl TokenBundlerImpl of super::ITokenBundler<ContractState> {
-        fn create(ref self: ContractState, mut tokens: Array<Token>) {
+        fn create(ref self: ContractState, mut tokens: Array<MultiToken::Asset>) {
             let mut tokens_len = tokens.len();
             assert(tokens_len > 0, 'Bundle one asset or more');
             assert(
@@ -142,9 +143,12 @@ mod TokenBundler {
                 .bundle_id_to_bundle_tokens_mapping
                 .read(self.last_bundle_id.read());
             loop {
-                let t = tokens.pop_front().unwrap();
-                let _res = bundle_tokens.append(t.contract_address);
-                // TODO: token transfer
+                let token = tokens.pop_front().unwrap();
+                let _res = bundle_tokens.append(token.address);
+                self.token_contract_to_asset_struct_mapping.write(token.address, token);
+                self
+                    .multi_token
+                    .transferAssetFrom(token, get_caller_address(), get_contract_address());
                 tokens_len -= 1;
                 if tokens_len == 0 {
                     break;
@@ -166,7 +170,19 @@ mod TokenBundler {
             let mut owner = self.bundle_id_to_owner_mapping.read(bundle_id);
             assert(owner == get_caller_address(), 'Caller is not bundle owner');
             // TODO: check if there'd be any gas improvements if we delete related storage
-            // TODO: transfer tokens back to owner
+            let mut token_addresses = self.bundle_id_to_bundle_tokens_mapping.read(bundle_id);
+            let mut addresses_len = token_addresses.len();
+            loop {
+                let token_address = token_addresses.pop_front().unwrap();
+                let asset = self
+                    .token_contract_to_asset_struct_mapping
+                    .read(token_address.unwrap());
+                self.multi_token.transferAssetFrom(asset, get_contract_address(), owner);
+                addresses_len -= 1;
+                if addresses_len == 0 {
+                    break;
+                }
+            };
             self.erc721._burn(bundle_id.into());
             self.emit(BundleUnwrapped { id: bundle_id });
         }
