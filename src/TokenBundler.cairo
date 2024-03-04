@@ -25,14 +25,14 @@ mod TokenBundler {
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc721::ERC721Component;
     use openzeppelin::token::erc721::ERC721ReceiverComponent;
-    use openzeppelin::access::ownable::OwnableComponent;
+    // use openzeppelin::access::ownable::OwnableComponent;
     use token_bundler::MultiToken::IMultiToken;
     use token_bundler::MultiToken::MultiToken;
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: ERC721ReceiverComponent, storage: erc721_receiver, event: ERC721ReceiverEvent);
-    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+    // component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
     component!(path: MultiToken, storage: multi_token, event: MultiTokenEvent);
 
     #[abi(embed_v0)]
@@ -57,12 +57,12 @@ mod TokenBundler {
         ERC721ReceiverComponent::ERC721ReceiverCamelImpl<ContractState>;
     impl ERC721ReceiverInternalImpl = ERC721ReceiverComponent::InternalImpl<ContractState>;
 
-    #[abi(embed_v0)]
-    impl OwnableImpl = OwnableComponent::OwnableImpl<ContractState>;
-    #[abi(embed_v0)]
-    impl OwnableCamelOnlyImpl =
-        OwnableComponent::OwnableCamelOnlyImpl<ContractState>;
-    impl InternalImpl = OwnableComponent::InternalImpl<ContractState>;
+    // #[abi(embed_v0)]
+    // impl OwnableImpl = OwnableComponent::OwnableImpl<ContractState>;
+    // #[abi(embed_v0)]
+    // impl OwnableCamelOnlyImpl =
+    //     OwnableComponent::OwnableCamelOnlyImpl<ContractState>;
+    // impl InternalImpl = OwnableComponent::InternalImpl<ContractState>;
 
     #[abi(embed_v0)]
     impl MultiTokenImpl = MultiToken::MultiToken<ContractState>;
@@ -80,8 +80,8 @@ mod TokenBundler {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         erc721_receiver: ERC721ReceiverComponent::Storage,
-        #[substorage(v0)]
-        ownable: OwnableComponent::Storage,
+        // #[substorage(v0)]
+        // ownable: OwnableComponent::Storage,
         #[substorage(v0)]
         multi_token: MultiToken::Storage
     }
@@ -108,8 +108,8 @@ mod TokenBundler {
         SRC5Event: SRC5Component::Event,
         #[flat]
         ERC721ReceiverEvent: ERC721ReceiverComponent::Event,
-        #[flat]
-        OwnableEvent: OwnableComponent::Event,
+        // #[flat]
+        // OwnableEvent: OwnableComponent::Event,
         #[flat]
         MultiTokenEvent: MultiToken::Event,
     }
@@ -121,11 +121,11 @@ mod TokenBundler {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, owner: ContractAddress) {
+    fn constructor(ref self: ContractState) {
         self.last_bundle_id.write(0);
         self.erc721.initializer('PWN Bundle', 'BNDL');
         self.erc721_receiver.initializer();
-        self.ownable.initializer(owner);
+    // self.ownable.initializer(owner);
     // at the moment, there's no token uri since strings in cairo can be max 31 chars
     // once string support comes, OZ will update their contract to use native string type
     }
