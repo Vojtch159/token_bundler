@@ -16,7 +16,9 @@ trait IMultiToken<TContractState> {
     );
     fn approveAsset(ref self: TContractState, asset: MultiToken::Asset, target: ContractAddress);
     fn getTransferAmount(self: @TContractState, asset: MultiToken::Asset) -> u256;
-    fn balanceOf(self: @TContractState, asset: MultiToken::Asset, target: ContractAddress) -> u256;
+    fn balanceOfTarget(
+        self: @TContractState, asset: MultiToken::Asset, target: ContractAddress
+    ) -> u256;
     fn isValid(self: @TContractState, asset: MultiToken::Asset) -> bool;
     fn isSameAs(
         self: @TContractState, asset: MultiToken::Asset, otherAsset: MultiToken::Asset
@@ -25,22 +27,29 @@ trait IMultiToken<TContractState> {
 
 #[starknet::component]
 mod MultiToken {
+    use core::starknet::SyscallResultTrait;
     use starknet::ContractAddress;
     use core::array::ArrayTrait;
     use starknet::get_contract_address;
+    use starknet::call_contract_syscall;
     use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
+    use openzeppelin::token::erc721::interface::{
+        IERC721Dispatcher, IERC721DispatcherTrait, IERC721_ID
+    };
+    use openzeppelin::account::interface;
+    use openzeppelin::introspection::interface::ISRC5DispatcherTrait;
+    use openzeppelin::introspection::interface::ISRC5Dispatcher;
 
     #[storage]
     struct Storage {}
 
-    #[derive(Drop, Serde, starknet::Store, PartialEq)]
+    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
     pub enum Category {
         ERC20,
         ERC721,
     }
 
-    #[derive(Drop, Serde, starknet::Store)]
+    #[derive(Copy, Drop, Serde, starknet::Store)]
     pub struct Asset {
         category: Category,
         address: ContractAddress,
@@ -72,13 +81,29 @@ mod MultiToken {
 
         fn approveAsset(
             ref self: ComponentState<TContractState>, asset: Asset, target: ContractAddress
-        ) {}
-
-        fn getTransferAmount(self: @ComponentState<TContractState>, asset: Asset) -> u256 {
-            return 0;
+        ) {
+            match asset.category {
+                Category::ERC20 => {
+                    let token = IERC20Dispatcher { contract_address: asset.address };
+                    token.approve(target, asset.amount);
+                },
+                Category::ERC721 => {
+                    let token = IERC721Dispatcher { contract_address: asset.address };
+                    token.approve(target, asset.id);
+                },
+                _ => { panic!("Unsupported category"); }
+            }
         }
 
-        fn balanceOf(
+        fn getTransferAmount(self: @ComponentState<TContractState>, asset: Asset) -> u256 {
+            if (asset.category == Category::ERC20) {
+                return asset.amount;
+            } else {
+                return 1;
+            }
+        }
+
+        fn balanceOfTarget(
             self: @ComponentState<TContractState>, asset: Asset, target: ContractAddress
         ) -> u256 {
             match asset.category {
@@ -104,7 +129,33 @@ mod MultiToken {
         }
 
         fn isValid(self: @ComponentState<TContractState>, asset: Asset) -> bool {
-            return false;
+            match asset.category {
+                Category::ERC20 => {
+                    if (asset.id != 0) {
+                        return false;
+                    }
+                    let is_src5_supported = self._contract_implements_src5(asset.address);
+                    if (is_src5_supported) {
+                        let dispatcher = ISRC5Dispatcher { contract_address: asset.address };
+                        return dispatcher
+                            .supports_interface(0x00); // TODO: get interface id for erc20
+                    } else {
+                        // should we drop support for contracts without src5 or do it the same way we do on ethereum? (soft check)
+                        return false;
+                    }
+                },
+                Category::ERC721 => {
+                    if (asset.amount != 0) {
+                        return false;
+                    }
+                    let dispatcher = ISRC5Dispatcher { contract_address: asset.address };
+                    return dispatcher.supports_interface(IERC721_ID);
+                },
+                _ => {
+                    panic!("Unsupported category");
+                    return false;
+                }
+            }
         }
 
         fn isSameAs(
@@ -149,6 +200,25 @@ mod MultiToken {
                 },
                 _ => { panic!("Unsupported category"); }
             }
+        }
+
+        // TODO: test correctness of this func
+        fn _contract_implements_src5(
+            self: @ComponentState<TContractState>, address: ContractAddress
+        ) -> bool {
+            // https://github.com/starknet-io/SNIPs/blob/main/SNIPS/snip-5.md#how-to-detect-if-a-contract-implements-src-5
+            let mut calldata = ArrayTrait::<felt252>::new();
+            calldata.append(0x3f918d17e5ee77373b56385708f855659a07f75997f365cf87748628532a055);
+            let ret_data = call_contract_syscall(
+                address,
+                0xfe80f537b66d12a00b6d3c072b44afbb716e78dde5c3f0ef116ee93d3e3283,
+                calldata.span()
+            );
+            let res = ret_data.unwrap_syscall();
+            if (res.len() == 1 || *res.at(0) == 1) {
+                return false;
+            }
+            return true;
         }
     }
 }
