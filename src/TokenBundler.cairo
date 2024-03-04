@@ -9,8 +9,8 @@ pub enum AssetCategory {
 
 #[derive(Drop, Serde, starknet::Store)]
 pub struct Token {
-    pub contract_address: ContractAddress,
-    pub asset_category: AssetCategory,
+    contract_address: ContractAddress,
+    asset_category: AssetCategory,
 }
 
 #[starknet::interface]
@@ -18,7 +18,7 @@ trait ITokenBundler<TContractState> {
     fn create(ref self: TContractState, tokens: Array<Token>);
     fn burn(ref self: TContractState, bundle_id: felt252);
     fn bundle(self: @TContractState, bundle_id: felt252) -> TokenBundler::Bundle;
-    fn tokens_in_bundle(self: @TContractState, bundle_id: felt252) -> Span<ContractAddress>;
+    fn tokensInBundle(self: @TContractState, bundle_id: felt252) -> Span<ContractAddress>;
 }
 
 #[starknet::contract]
@@ -144,7 +144,7 @@ mod TokenBundler {
             loop {
                 let t = tokens.pop_front().unwrap();
                 let _res = bundle_tokens.append(t.contract_address);
-                // todo token transfer
+                // TODO: token transfer
                 tokens_len -= 1;
                 if tokens_len == 0 {
                     break;
@@ -162,11 +162,10 @@ mod TokenBundler {
             return;
         }
 
-        // different fn name compared to original token bundler interface because unwrap is a keyword in cairo
         fn burn(ref self: ContractState, bundle_id: felt252) {
             let mut owner = self.bundle_id_to_owner_mapping.read(bundle_id);
             assert(owner == get_caller_address(), 'Caller is not bundle owner');
-            // check if there'd be any gas improvements if we delete related storage
+            // TODO: check if there'd be any gas improvements if we delete related storage
             // TODO: transfer tokens back to owner
             self.erc721._burn(bundle_id.into());
             self.emit(BundleUnwrapped { id: bundle_id });
@@ -178,7 +177,7 @@ mod TokenBundler {
             return Bundle { owner: owner, tokens: tokens.array().unwrap().span() };
         }
 
-        fn tokens_in_bundle(self: @ContractState, bundle_id: felt252) -> Span<ContractAddress> {
+        fn tokensInBundle(self: @ContractState, bundle_id: felt252) -> Span<ContractAddress> {
             return self.bundle_id_to_bundle_tokens_mapping.read(bundle_id).array().unwrap().span();
         }
     }
