@@ -9,11 +9,12 @@ cairo-version = "2.5.3"
 [dependencies]
 snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry", tag = "v0.16.0" }
 alexandria_storage = { git = "https://github.com/keep-starknet-strange/alexandria.git" }
-openzeppelin = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v0.9.0" }
+openzeppelin = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v0.10.0" }
 starknet = "2.5.3"
 
 [[target.starknet-contract]]
-casm = true
+sierra = true
+casm = false
 
-[scripts]
-test = 'snforge test'
+[tool.fmt]
+sort-module-level-items = true
