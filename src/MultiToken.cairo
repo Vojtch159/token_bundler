@@ -146,16 +146,7 @@ mod MultiToken {
                     if (asset.id != 0) {
                         return Option::Some(false);
                     }
-                    let is_src5_supported = self._contract_implements_src5(asset.address);
-                    if (is_src5_supported) {
-                        let dispatcher = ISRC5Dispatcher { contract_address: asset.address };
-                        return Option::Some(
-                            dispatcher.supports_interface(0x00)
-                        ); // TODO: what interface id to use for erc20?
-                    } else {
-                        // should we drop support for contracts without src5 or do it the same way we do on ethereum? (soft check)
-                        return Option::Some(false);
-                    }
+                    return Option::Some(true);
                 },
                 Category::ERC721 => {
                     if (asset.amount != 0) {
