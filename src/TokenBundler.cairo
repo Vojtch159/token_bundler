@@ -4,16 +4,21 @@ use token_bundler::MultiToken::MultiToken;
 #[starknet::interface]
 trait ITokenBundler<TContractState> {
     fn create(ref self: TContractState, tokens: Array<MultiToken::Asset>);
-    fn burn(ref self: TContractState, bundle_id: felt252);
-    fn bundle(self: @TContractState, bundle_id: felt252) -> TokenBundler::Bundle;
-    fn tokensInBundle(self: @TContractState, bundle_id: felt252) -> Span<ContractAddress>;
+    fn burn(ref self: TContractState, bundle_id: u256);
+    fn setUri(ref self: TContractState, token_uri: ByteArray);
+    fn bundle(self: @TContractState, bundle_id: u256) -> TokenBundler::Bundle;
+    fn tokensInBundle(self: @TContractState, bundle_id: u256) -> Span<ContractAddress>;
 }
 
 #[starknet::contract]
 mod TokenBundler {
+    use openzeppelin::token::erc1155::interface::IERC1155MetadataURI;
+    use openzeppelin::token::erc1155::erc1155::ERC1155Component::InternalTrait;
+    use openzeppelin::token::erc1155::erc1155_receiver::ERC1155ReceiverComponent::InternalTrait as ERC1155InternalTrait;
+    use core::traits::TryInto;
     use core::option::OptionTrait;
     use openzeppelin::token::erc721::interface::IERC721CamelOnly;
-    use openzeppelin::token::erc721::erc721_receiver::ERC721ReceiverComponent::InternalTrait;
+    use openzeppelin::token::erc721::erc721_receiver::ERC721ReceiverComponent::InternalTrait as ERC721InternalTrait;
     use core::traits::Into;
     use core::starknet::event::EventEmitter;
     use core::result::ResultTrait;
@@ -23,28 +28,21 @@ mod TokenBundler {
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use alexandria_storage::list::{ListTrait, List};
     use openzeppelin::introspection::src5::SRC5Component;
-    use openzeppelin::token::erc721::ERC721Component;
     use openzeppelin::token::erc721::ERC721ReceiverComponent;
-    // use openzeppelin::access::ownable::OwnableComponent;
+    use openzeppelin::access::ownable::OwnableComponent;
     use token_bundler::MultiToken::IMultiToken;
     use token_bundler::MultiToken::MultiToken;
+    use openzeppelin::token::erc1155::ERC1155Component;
+    use openzeppelin::token::erc1155::ERC1155ReceiverComponent;
 
-    component!(path: ERC721Component, storage: erc721, event: ERC721Event);
+    component!(path: ERC1155Component, storage: erc1155, event: ERC1155Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: ERC721ReceiverComponent, storage: erc721_receiver, event: ERC721ReceiverEvent);
-    // component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
     component!(path: MultiToken, storage: multi_token, event: MultiTokenEvent);
-
-    #[abi(embed_v0)]
-    impl ERC721Impl = ERC721Component::ERC721Impl<ContractState>;
-    #[abi(embed_v0)]
-    impl ERC721MetadataImpl = ERC721Component::ERC721MetadataImpl<ContractState>;
-    #[abi(embed_v0)]
-    impl ERC721CamelOnly = ERC721Component::ERC721CamelOnlyImpl<ContractState>;
-    #[abi(embed_v0)]
-    impl ERC721MetadataCamelOnly =
-        ERC721Component::ERC721MetadataCamelOnlyImpl<ContractState>;
-    impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
+    component!(
+        path: ERC1155ReceiverComponent, storage: erc1155_receiver, event: ERC1155ReceiverEvent
+    );
 
     #[abi(embed_v0)]
     impl SRC5Impl = SRC5Component::SRC5Impl<ContractState>;
@@ -57,44 +55,63 @@ mod TokenBundler {
         ERC721ReceiverComponent::ERC721ReceiverCamelImpl<ContractState>;
     impl ERC721ReceiverInternalImpl = ERC721ReceiverComponent::InternalImpl<ContractState>;
 
-    // #[abi(embed_v0)]
-    // impl OwnableImpl = OwnableComponent::OwnableImpl<ContractState>;
-    // #[abi(embed_v0)]
-    // impl OwnableCamelOnlyImpl =
-    //     OwnableComponent::OwnableCamelOnlyImpl<ContractState>;
-    // impl InternalImpl = OwnableComponent::InternalImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl OwnableImpl = OwnableComponent::OwnableImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl OwnableCamelOnlyImpl =
+        OwnableComponent::OwnableCamelOnlyImpl<ContractState>;
+    impl InternalImpl = OwnableComponent::InternalImpl<ContractState>;
 
     #[abi(embed_v0)]
     impl MultiTokenImpl = MultiToken::MultiToken<ContractState>;
     impl MultiTokenInternalImpl = MultiToken::InternalImpl<ContractState>;
 
+    #[abi(embed_v0)]
+    impl ERC1155Impl = ERC1155Component::ERC1155Impl<ContractState>;
+    #[abi(embed_v0)]
+    impl ERC1155MetadataURIImpl =
+        ERC1155Component::ERC1155MetadataURIImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl ERC1155Camel = ERC1155Component::ERC1155CamelImpl<ContractState>;
+    impl ERC1155InternalImpl = ERC1155Component::InternalImpl<ContractState>;
+
+    #[abi(embed_v0)]
+    impl ERC1155ReceiverImpl =
+        ERC1155ReceiverComponent::ERC1155ReceiverImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl ERC1155ReceiverCamelImpl =
+        ERC1155ReceiverComponent::ERC1155ReceiverCamelImpl<ContractState>;
+    impl ERC1155ReceiverInternalImpl = ERC1155ReceiverComponent::InternalImpl<ContractState>;
+
     #[storage]
     struct Storage {
-        last_bundle_id: felt252,
-        bundle_id_to_owner_mapping: LegacyMap::<felt252, ContractAddress>,
-        bundle_id_to_bundle_tokens_mapping: LegacyMap::<felt252, List<ContractAddress>>,
+        last_bundle_id: u256,
+        bundle_id_to_owner_mapping: LegacyMap::<u256, ContractAddress>,
+        bundle_id_to_bundle_tokens_mapping: LegacyMap::<u256, List<ContractAddress>>,
         token_contract_to_asset_struct_mapping: LegacyMap::<ContractAddress, MultiToken::Asset>,
-        #[substorage(v0)]
-        erc721: ERC721Component::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         erc721_receiver: ERC721ReceiverComponent::Storage,
-        // #[substorage(v0)]
-        // ownable: OwnableComponent::Storage,
         #[substorage(v0)]
-        multi_token: MultiToken::Storage
+        ownable: OwnableComponent::Storage,
+        #[substorage(v0)]
+        multi_token: MultiToken::Storage,
+        #[substorage(v0)]
+        erc1155: ERC1155Component::Storage,
+        #[substorage(v0)]
+        erc1155_receiver: ERC1155ReceiverComponent::Storage,
     }
 
     #[derive(Drop, starknet::Event)]
     struct BundleCreated {
-        id: felt252,
+        id: u256,
         creator: ContractAddress,
     }
 
     #[derive(Drop, starknet::Event)]
     struct BundleUnwrapped {
-        id: felt252,
+        id: u256,
     }
 
     #[event]
@@ -103,15 +120,17 @@ mod TokenBundler {
         BundleCreated: BundleCreated,
         BundleUnwrapped: BundleUnwrapped,
         #[flat]
-        ERC721Event: ERC721Component::Event,
-        #[flat]
         SRC5Event: SRC5Component::Event,
         #[flat]
         ERC721ReceiverEvent: ERC721ReceiverComponent::Event,
-        // #[flat]
-        // OwnableEvent: OwnableComponent::Event,
+        #[flat]
+        OwnableEvent: OwnableComponent::Event,
         #[flat]
         MultiTokenEvent: MultiToken::Event,
+        #[flat]
+        ERC1155Event: ERC1155Component::Event,
+        #[flat]
+        ERC1155ReceiverEvent: ERC1155ReceiverComponent::Event,
     }
 
     #[derive(Drop, Serde)]
@@ -121,13 +140,12 @@ mod TokenBundler {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState) {
+    fn constructor(ref self: ContractState, token_uri: ByteArray, owner: ContractAddress) {
         self.last_bundle_id.write(0);
-        self.erc721.initializer('PWN Bundle', 'BNDL');
+        self.erc1155.initializer(token_uri);
         self.erc721_receiver.initializer();
-    // self.ownable.initializer(owner);
-    // at the moment, there's no token uri since strings in cairo can be max 31 chars
-    // once string support comes, OZ will update their contract to use native string type
+        self.erc1155_receiver.initializer();
+        self.ownable.initializer(owner);
     }
 
     #[abi(embed_v0)]
@@ -135,9 +153,6 @@ mod TokenBundler {
         fn create(ref self: ContractState, mut tokens: Array<MultiToken::Asset>) {
             let mut tokens_len = tokens.len();
             assert(tokens_len > 0, 'Bundle one asset or more');
-            assert(
-                self.last_bundle_id.read() + 1 != 0, 'Bundler out of capacity'
-            ); // TODO: write test for this
             self.bundle_id_to_owner_mapping.write(self.last_bundle_id.read(), get_caller_address());
             let mut bundle_tokens = self
                 .bundle_id_to_bundle_tokens_mapping
@@ -157,7 +172,11 @@ mod TokenBundler {
             self
                 .bundle_id_to_bundle_tokens_mapping
                 .write(self.last_bundle_id.read(), bundle_tokens);
-            self.erc721._mint(get_caller_address(), self.last_bundle_id.read().into());
+            self
+                .erc1155
+                .mint_with_acceptance_check(
+                    get_caller_address(), self.last_bundle_id.read().into(), 1, array![].span()
+                );
             self
                 .emit(
                     BundleCreated { id: self.last_bundle_id.read(), creator: get_caller_address() }
@@ -166,7 +185,7 @@ mod TokenBundler {
             return;
         }
 
-        fn burn(ref self: ContractState, bundle_id: felt252) {
+        fn burn(ref self: ContractState, bundle_id: u256) {
             let mut owner = self.bundle_id_to_owner_mapping.read(bundle_id);
             assert(owner == get_caller_address(), 'Caller is not bundle owner');
             // TODO: check if there'd be any gas improvements if we delete related storage
@@ -183,18 +202,23 @@ mod TokenBundler {
                     break;
                 }
             };
-            self.erc721._burn(bundle_id.into());
+            self.erc1155.burn(get_contract_address(), bundle_id.into(), 1);
             self.emit(BundleUnwrapped { id: bundle_id });
         }
 
-        fn bundle(self: @ContractState, bundle_id: felt252) -> Bundle {
+        fn bundle(self: @ContractState, bundle_id: u256) -> Bundle {
             let owner = self.bundle_id_to_owner_mapping.read(bundle_id);
             let tokens = self.bundle_id_to_bundle_tokens_mapping.read(bundle_id);
             return Bundle { owner: owner, tokens: tokens.array().unwrap().span() };
         }
 
-        fn tokensInBundle(self: @ContractState, bundle_id: felt252) -> Span<ContractAddress> {
+        fn tokensInBundle(self: @ContractState, bundle_id: u256) -> Span<ContractAddress> {
             return self.bundle_id_to_bundle_tokens_mapping.read(bundle_id).array().unwrap().span();
+        }
+
+        fn setUri(ref self: ContractState, token_uri: ByteArray) {
+            self.ownable.assert_only_owner();
+            self.erc1155.set_base_uri(token_uri);
         }
     }
 }
