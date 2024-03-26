@@ -1,0 +1,20 @@
+{
+  "name": "scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "node deploy",
+    "deploy_devnet": "node deploy_devnet"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "starknet": "^6.5.0"
+  },
+  "devDependencies": {
+    "prettier": "3.1.1"
+  }
+}

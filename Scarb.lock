@@ -4,7 +4,7 @@ version = 1
 [[package]]
 name = "alexandria_storage"
 version = "0.3.0"
-source = "git+https://github.com/keep-starknet-strange/alexandria.git#417c5a80ed2fef05ce159d643f3e34a5386ee06c"
+source = "git+https://github.com/keep-starknet-strange/alexandria.git?rev=c6e777e63bc1eb72413058754b5a3bfcba000d44#c6e777e63bc1eb72413058754b5a3bfcba000d44"
 
 [[package]]
 name = "openzeppelin"

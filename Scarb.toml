@@ -1,20 +1,28 @@
 [package]
 name = "token_bundler"
 version = "0.1.0"
-edition = "2023_10"
-cairo-version = "2.5.3"
-
-# See more keys and their definitions at https://docs.swmansion.com/scarb/docs/reference/manifest.html
 
 [dependencies]
 snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry", tag = "v0.16.0" }
-alexandria_storage = { git = "https://github.com/keep-starknet-strange/alexandria.git" }
+alexandria_storage = { git = "https://github.com/keep-starknet-strange/alexandria.git", rev = "c6e777e63bc1eb72413058754b5a3bfcba000d44" }
 openzeppelin = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v0.10.0" }
 starknet = "2.5.3"
 
 [[target.starknet-contract]]
 sierra = true
-casm = false
+casm = true
+allowed-libfuncs-list.name = "experimental"
+
+[cairo]
+sierra-replace-ids = true
 
 [tool.fmt]
 sort-module-level-items = true
+
+[scripts]
+test = "snforge test"
+
+# [[tool.snforge.fork]]
+# name = "Mainnet"
+# url = "https://rpc.nethermind.io/mainnet-juno/?apikey="
+# block_id.number = "519354"
